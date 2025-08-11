@@ -1,0 +1,109 @@
+name: "book"
+
+trainer:
+  output_path: "outputs/real/debug_colmap_0.001"
+  max_steps: 15000
+  val_interval: 500
+  blur_step_start: 7000 # 7000
+  blur_step_end: 9000 # 9000
+  diffser_opacity_threshold: 0.8
+
+  model:
+    name: DiffuserGaussianSplatting
+    lambda_dssim: 0.2
+    lambda_clear: 0.0
+    lambda_diff_seg: 0.1
+    lambda_diff_det: 0.0
+    lambda_depth_diff: 0.0
+    lambda_contrast: 0.0
+    lambda_non_diff: 0.1
+    lambda_diff_opacity: 0.1
+    lambda_trans_depth: 0.0
+    lambda_diff_uniform: 0.01
+    lambda_depth_sep: 0.0
+    lambda_diff_contact: 0.0
+    lambda_blur_uniform: 0.0
+    lambda_diff_flatness: 0.0
+    diff_threshold: 0.001
+    max_blur_scale: 0.01
+
+    point_cloud:
+      point_cloud_type: "DiffuserGaussianPointCloud"  
+      max_sh_degree: 3
+      trainable: true
+      unwarp_prefix: "point_cloud"
+      initializer:
+        init_type: 'colmap'
+        feat_dim: 3
+      # initializer:
+      #   init_type: 'random'
+      #   num_points: 100000
+      #   feat_dim: 3
+      #   radius: 1.3
+      max_diff_strength: 0.01
+
+  optimizer:
+    optimizer_1:
+      type: DiffuserGaussianSplattingOptimizer
+      name: Adam
+      args:
+        eps: 1e-15
+      extra_cfg:
+        control_module: "point_cloud" # the variable name that need to be densification
+        percent_dense: 0.001 # 0.01
+        split_num: 2
+        densify_start_iter: 500
+        densify_stop_iter: 15000
+        prune_interval: 100
+        duplicate_interval: 100
+        opacity_reset_interval: 3000
+        densify_grad_threshold: 0.0002
+        min_opacity: 0.005
+        min_diffuser_density: 1.0
+      params:
+        point_cloud.position:
+          lr: 0.00016
+        point_cloud.features:
+          lr: 0.0025
+        point_cloud.features_rest:
+          lr: 0.000125 # features/20
+        point_cloud.scaling:
+          lr: 0.005
+        point_cloud.rotation:
+          lr: 0.001
+        point_cloud.opacity:
+          lr: 0.05
+        point_cloud.diff_density:
+          lr: 0.2 # 0.05
+        point_cloud.diff_strength:
+          lr: 0.2 # 0.05
+
+  scheduler:
+    name: "ExponLRScheduler"
+    max_steps: ${trainer.max_steps}
+    params:
+      point_cloud.position:
+        init:  0.00016
+        final: 0.0000016
+  dataset:
+    data_path: "/workspaces/datasets/DiffuserNeRF/Real/Book_test"
+    data_type: "DiffuserColmapReFormat"
+    cached_image: True
+    shuffle: True
+    batch_size: 1
+    num_workers: 0
+    scale: 0.25
+    white_bg: False
+    predict_diffuser: False #True
+
+  renderer:
+    name: "DiffuserDPTRRender"
+    max_sh_degree: ${trainer.model.point_cloud.max_sh_degree}
+  writer:
+    writer_type: "TensorboardWriter"
+  
+  hooks:
+    LogHook:
+      name: DeblurLogHook
+    CheckPointHook:
+      name: CheckPointHook

@@ -1,0 +1,112 @@
+name: "FixedGeometry"
+
+trainer:
+  output_path: "outputs/WACV_real/240723_iPadMini/Sign_test"
+  max_steps: 5000 # 50000
+  val_interval: 250 # 5000
+  blur_step_start: 100 # 7000
+  blur_step_end: 500 # 9000
+  diffser_opacity_threshold: 0.8
+
+  model:
+    name: DiffuserGaussianSplatting
+    lambda_dssim: 0.1
+    lambda_deblur_tv: 0.0
+    lambda_diff_fidelity: 0.0
+
+    diff_threshold: 0.001
+    init_diff_strength: 0.5e0
+    diff_strength_min: 0.1e0
+    diff_strength_max: 10.0e0
+
+    
+    # object/diffuser geometry
+    plane_axes: "xy"
+    obj_position: [0, 0, 0]
+    diff_size: [[-0.05, -0.04], [0.05, 0.04]]
+    obj_size: [[-0.05, -0.04], [0.05, 0.04]]
+    diff_distance: 0.005
+
+    optimize_diff_strength: true
+    point_cloud:
+      point_cloud_type: "DiffuserGaussianPointCloud"  
+      max_sh_degree: 1
+      trainable: true
+      unwarp_prefix: "point_cloud"
+      initializer:
+        init_type: 'random'
+        num_points: 50000
+        feat_dim: 3
+        radius: 1.3
+      max_diff_strength: 0.01
+
+  optimizer:
+    optimizer_1:
+      type: DiffuserGaussianSplattingOptimizer
+      name: Adam
+      args:
+        eps: 1e-15
+      extra_cfg:
+        control_module: "point_cloud" # the variable name that need to be densification
+        percent_dense: 0.01
+        split_num: 2
+        densify_start_iter: 105000 # 500
+        densify_stop_iter: 150000 # 15000
+        prune_interval: 101000
+        duplicate_interval: 101000
+        opacity_reset_interval: 130000
+        densify_grad_threshold: 0.0001 # 0.0002
+        min_opacity: 0.005
+        min_diffuser_density: 1.0
+      params:
+        point_cloud.position:
+          lr: 0.00016
+        point_cloud.features:
+          lr: 0.0025
+        point_cloud.features_rest:
+          lr: 0.000125 # features/20
+        point_cloud.scaling:
+          lr: 0.010 # 0.005
+        point_cloud.rotation:
+          lr: 0.001
+        point_cloud.opacity:
+          lr: 0.05
+        point_cloud.diff_density:
+          lr: 0.2 # 0.05
+        point_cloud.diff_strength:
+          lr: 0.2 # 0.05
+        diff_strength:
+          lr: 0.05
+        # eta:
+        #   lr: 0.05
+
+  scheduler:
+    name: "ExponLRScheduler"
+    max_steps: ${trainer.max_steps}
+    params:
+      point_cloud.position:
+        init:  0.00016
+        final: 0.0000016
+  dataset:
+    data_path: "/workspaces/datasets/DiffuserNeRF/Real/240713_iPadPro/Sign"
+    data_type: "DiffuserNerfReFormat"
+    cached_image: True
+    shuffle: True
+    batch_size: 1
+    num_workers: 0
+    scale: 1.0
+    predict_diffuser: False #True
+    white_bg: False
+
+  renderer:
+    name: "DiffuserDPTRRender"
+    max_sh_degree: ${trainer.model.point_cloud.max_sh_degree}
+    update_sh_iter: 500
+  writer:
+    writer_type: "TensorboardWriter"
+  
+  hooks:
+    LogHook:
+      name: DeblurLogHook
+    CheckPointHook:
+      name: CheckPointHook
