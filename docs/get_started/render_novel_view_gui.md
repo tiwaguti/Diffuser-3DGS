@@ -1,1 +1,0 @@
-# Using GUI and render novel view
